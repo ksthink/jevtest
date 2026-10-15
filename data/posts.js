@@ -5,7 +5,7 @@
  * 모든 값은 고정이다(난수·현재시각 없음) -> 배포해도 매번 같은 사이트가 나온다.
  */
 const {
-  DOMAINS, AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
+  DOMAINS, DOMAIN_SCOPE, AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
   COMMENT_AUTHORS, NORMAL_COMMENTS, OFFICIAL_REPLIES, TRAP_COMMENTS,
 } = require('./copy');
 const { circled, cyrillic, entities, fullwidth, jamo, jamoLatin, leet, mathBold, nfd, spaced, zeroWidth } = require('../lib/disguise');
@@ -16,7 +16,7 @@ const EXTRA_CODES = ['ZERO_WIDTH', 'CLIPPED', 'VISIBILITY_HIDDEN', 'HTML_COMMENT
 const TEXT_CODES = ['HOMOGLYPH', 'JAMO', 'ZERO_WIDTH'];
 
 const POSTS_PER_PAGE = 10;
-const TOTAL_POSTS = 300;
+const TOTAL_POSTS = 500;
 const TOTAL_PAGES = TOTAL_POSTS / POSTS_PER_PAGE;
 
 // ---------------------------------------------------------------- 위장 변형
@@ -56,6 +56,18 @@ const OFFSCREEN_V = [
   { name: 'top:-10000px', attr: 'style="position:absolute;top:-10000px"' },
   { name: 'text-indent:-9999px', attr: 'style="display:block;text-indent:-9999px;overflow:hidden;white-space:nowrap"' },
   { name: 'transform 이동', attr: 'style="position:absolute;transform:translateX(-9999px)"' },
+];
+
+/**
+ * 분야 회전 순서.
+ *
+ * 요강 5개 분야가 10, 요강 밖 유형이 2 비율이다. 요강 밖 유형도 실제로 올라오므로
+ * 넣어 두되, 적격평가 점수를 재는 숫자가 요강 밖 내용에 휘둘리지 않도록 비중을 낮춘다.
+ */
+const DOMAIN_CYCLE = [
+  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
+  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
+  'INVEST', 'JOB',
 ];
 
 /**
@@ -141,8 +153,11 @@ function build(spec, gt) {
 
   if (codes.includes('HTML_COMMENT')) {
     notes.push('HTML 주석 속');
-    return { gt, codes, where: spec.where, evidence: raw, note: notes.join(' / '),
-      html: `<span ${marker}><!-- ${esc(raw)} --></span>` };
+    return {
+      gt, codes, where: spec.where, dom: spec.dom, scope: DOMAIN_SCOPE[spec.dom] || 'spec',
+      evidence: raw, note: notes.join(' / '),
+      html: `<span ${marker}><!-- ${esc(raw)} --></span>`,
+    };
   }
 
   // HTML 엔티티까지 겹쳐 둔 건(엔티티 해제 처리 확인용)
@@ -159,6 +174,9 @@ function build(spec, gt) {
     gt,
     codes,
     where: spec.where,
+    dom: spec.dom,
+    // 'spec' = 요강 5개 분야, 'extra' = 요강 밖이지만 실제로 올라오는 유형
+    scope: DOMAIN_SCOPE[spec.dom] || 'spec',
     evidence: text,
     note: notes.join(' / '),
     html: `<${tag} ${marker}${clsAttr}${attrPart}>${href}</${tag}>`,
@@ -174,10 +192,10 @@ function build(spec, gt) {
 const SLOT_ORDER = [0, 1, 3, 4, 6, 7, 9, 2, 5, 8];
 const FINDING_SLOTS = 7;
 /** 검출 자리마다 어디에 심을지. 마지막 자리는 짝수 쪽에서만 iframe. */
-const SLOT_WHERE = ['title', 'body', 'body', 'comment', 'body', 'comment', 'iframe'];
+const SLOT_WHERE = ['title', 'body', 'comment', 'body', 'comment', 'comment', 'iframe'];
 
 /** 비밀글. 목록에 자물쇠로 표시하고 열지 않아야 한다. 안에는 아무것도 심지 않는다. */
-const SECRET = new Set([47, 88, 134, 189, 231, 276]);
+const SECRET = new Set([47, 88, 134, 189, 231, 276, 318, 365, 412, 468]);
 
 function pageSlots(page) {
   return SLOT_ORDER.map((x) => (x + page) % POSTS_PER_PAGE);
@@ -194,7 +212,7 @@ function buildPlan() {
       if (SECRET.has(i)) continue; // 비밀글에는 심지 않는다
       const variant = VARIANTS[k % VARIANTS.length];
       // 26가지 변형을 한 바퀴 돌 때마다 분야를 옮긴다 -> (변형 x 분야) 조합을 모두 덮는다.
-      const dom = DOMAINS[Math.floor(k / VARIANTS.length) % DOMAINS.length];
+      const dom = DOMAIN_CYCLE[Math.floor(k / VARIANTS.length) % DOMAIN_CYCLE.length];
       let where = SLOT_WHERE[s];
       if (where === 'iframe' && page % 2 === 1) where = 'body';
       plan.push({ i, codes: variant.codes, v: variant.v, dom, c: k, where });
@@ -203,17 +221,17 @@ function buildPlan() {
   }
 
   // 한 요소에 기법이 겹친 경우: 기법별로 따로 1건씩 세야 한다.
-  for (const page of [1, 6, 11, 16, 21, 26]) {
+  for (const page of [1, 6, 11, 16, 21, 26, 31, 36, 41, 46]) {
     plan.push({
       i: page * POSTS_PER_PAGE + ((page + 2) % POSTS_PER_PAGE),
-      codes: ['TRANSPARENT', 'OFFSCREEN'], v: page % 6, dom: DOMAINS[page % DOMAINS.length], c: page, where: 'body',
+      codes: ['TRANSPARENT', 'OFFSCREEN'], v: page % 6, dom: DOMAIN_CYCLE[page % DOMAIN_CYCLE.length], c: page, where: 'body',
     });
   }
   // HTML 엔티티로 한 번 더 감싼 경우
-  for (const page of [4, 19]) {
+  for (const page of [4, 19, 34, 49]) {
     plan.push({
       i: page * POSTS_PER_PAGE + ((page + 5) % POSTS_PER_PAGE),
-      codes: ['OFFSCREEN'], v: 0, dom: DOMAINS[(page + 1) % DOMAINS.length], c: page, where: 'body', entities: true,
+      codes: ['OFFSCREEN'], v: 0, dom: DOMAIN_CYCLE[(page + 1) % DOMAIN_CYCLE.length], c: page, where: 'body', entities: true,
     });
   }
   return plan.filter((x) => !SECRET.has(x.i));
@@ -302,7 +320,7 @@ const POSTS = [];
 
     // 댓글
     const commentInj = injections.filter((x) => x.where === 'comment');
-    const normalCount = [0, 1, 2, 3, 2, 1, 4, 2, 1, 3][i % 10];
+    const normalCount = [1, 2, 4, 3, 5, 2, 6, 3, 2, 4][i % 10];
     const commentTraps = [];
     const comments = [];
 
@@ -375,7 +393,7 @@ const POSTS = [];
     p.injections.filter((x) => x.where === 'comment').every((x) => x.codes.every((c) => TEXT_CODES.includes(c)));
   const picked = new Set();
   for (const p of POSTS) {
-    if (picked.size >= 8 || p.secret || !contentOnly(p)) continue;
+    if (picked.size >= 14 || p.secret || !contentOnly(p)) continue;
     if ([...picked].some((q) => q.page === p.page)) continue; // 쪽마다 최대 1건
     const more = Math.max(1, p.comments.length - p.injections.filter((x) => x.where === 'comment').length - 1);
     if (p.comments.length <= more) continue;

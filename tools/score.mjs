@@ -161,6 +161,9 @@ for (const r of rows) {
 }
 
 const allGtCode = new Set(key.expected_findings.map((f) => `${f.gt}|${f.code}`));
+// 요강 5개 분야와 요강 밖 유형을 갈라 센다.
+const scopeOf = new Map();
+for (const f of key.expected_findings) scopeOf.set(`${f.gt}|${f.code}`, f.scope || 'spec');
 const fn = [...allGtCode].filter((k) => !tpGt.has(k)).sort();
 
 const tp = tpGt.size;
@@ -178,6 +181,16 @@ console.log(`놓침(FN)    : ${fn.length}`);
 console.log(`오탐(FP)    : ${fp.length}  그중 함정을 건드린 것 ${trapHits.length}건`);
 if (dup.length) console.log(`중복        : ${dup.length}  (같은 정답을 두 번 보고 - 채점은 1건으로 합침)`);
 console.log(`정밀도      : ${pct(prec)}   재현율: ${pct(rec)}   F1: ${pct(f1)}`);
+
+// 적격평가는 요강 5개 분야만 본다. 그 숫자를 따로 보여 준다.
+const spec = [...allGtCode].filter((k) => scopeOf.get(k) === 'spec');
+const extraScope = [...allGtCode].filter((k) => scopeOf.get(k) === 'extra');
+const hit = (arr) => arr.filter((k) => tpGt.has(k)).length;
+console.log('');
+console.log(`요강 5개 분야  : ${hit(spec)}/${spec.length}  ${pct(spec.length ? hit(spec) / spec.length : 0)}   <- 적격평가 대상`);
+if (extraScope.length) {
+  console.log(`요강 밖 유형   : ${hit(extraScope)}/${extraScope.length}  ${pct(hit(extraScope) / extraScope.length)}   (리딩방·고수익알바 등, 본심사 창의성 참고)`);
+}
 
 // 유형별
 const perCode = new Map();
