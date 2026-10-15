@@ -1,22 +1,22 @@
 /**
- * 게시글 100건과 정답표의 단일 원본.
+ * 게시글 300건과 정답표의 단일 원본.
  *
  * 페이지 HTML과 정답표를 같은 자료에서 만들기 때문에 둘이 어긋날 수 없다.
  * 모든 값은 고정이다(난수·현재시각 없음) -> 배포해도 매번 같은 사이트가 나온다.
  */
 const {
-  AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
+  DOMAINS, AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
   COMMENT_AUTHORS, NORMAL_COMMENTS, OFFICIAL_REPLIES, TRAP_COMMENTS,
 } = require('./copy');
 const { circled, cyrillic, entities, fullwidth, jamo, jamoLatin, leet, mathBold, nfd, spaced, zeroWidth } = require('../lib/disguise');
 
 const MAIN_CODES = ['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN'];
 const EXTRA_CODES = ['ZERO_WIDTH', 'CLIPPED', 'VISIBILITY_HIDDEN', 'HTML_COMMENT', 'VISIBLE_AD'];
-
-
+/** 글자 자체를 바꾸는 기법. 이쪽은 위장이 실제로 걸렸는지 만들 때 확인한다. */
+const TEXT_CODES = ['HOMOGLYPH', 'JAMO', 'ZERO_WIDTH'];
 
 const POSTS_PER_PAGE = 10;
-const TOTAL_POSTS = 100;
+const TOTAL_POSTS = 300;
 const TOTAL_PAGES = TOTAL_POSTS / POSTS_PER_PAGE;
 
 // ---------------------------------------------------------------- 위장 변형
@@ -24,8 +24,8 @@ const TOTAL_PAGES = TOTAL_POSTS / POSTS_PER_PAGE;
 /** HOMOGLYPH 변형: 닮은꼴 글자로 바꾼다. 내용은 화면에 그대로 보인다. */
 const HOMOGLYPH_V = [
   { name: '전각', enc: fullwidth },
-  { name: '키릴·그리스', enc: (s) => cyrillic(s) },
-  { name: '숫자 치환', enc: (s) => leet(s, ['o', 'O', 'i', 'I', 's', 'S']) },
+  { name: '키릴·그리스', enc: cyrillic },
+  { name: '숫자 치환', enc: (s) => leet(s) },
   { name: '원문자', enc: circled },
   { name: '수학용 영문', enc: mathBold },
 ];
@@ -58,120 +58,23 @@ const OFFSCREEN_V = [
   { name: 'transform 이동', attr: 'style="position:absolute;transform:translateX(-9999px)"' },
 ];
 
-// ---------------------------------------------------------------- 삽입 만들기
-
-
 /**
- * 삽입 계획. 쪽마다 5건이 들어가도록 골라 두었다.
- * 쪽별로 검출이 고르게 퍼져 있어야 "쪽 구간 선택"이나 중복 합치기를 시험할 수 있다.
+ * 기법·변형을 모두 훑는 조합표(26가지).
+ * 검출을 이 표 순서대로 돌려 쓰므로 모든 변형이 고르게 나온다.
  */
-const PLAN = [
-  // 1쪽
-  { i: 0, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 0, v: 0, where: 'title' },
-  { i: 2, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 1, v: 0, where: 'body' },
-  { i: 2, codes: ['OFFSCREEN'], dom: 'LOAN', c: 0, v: 0, where: 'body' },
-  { i: 4, codes: ['OFFSCREEN'], dom: 'ADULT', c: 0, v: 3, where: 'body' },
-  { i: 6, codes: ['JAMO'], dom: 'GAMBLE', c: 2, v: 0, where: 'body' },
-  { i: 9, codes: ['VISIBLE_AD'], dom: 'LOAN', c: 1, where: 'comment' },
-  // 2쪽
-  { i: 10, codes: ['JAMO'], dom: 'GAMBLE', c: 0, v: 2, where: 'title' },
-  { i: 12, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 3, v: 1, where: 'body' },
-  { i: 14, codes: ['TRANSPARENT'], dom: 'DRUG', c: 0, v: 1, where: 'body' },
-  { i: 16, codes: ['OFFSCREEN'], dom: 'TRADE', c: 0, v: 1, where: 'body' },
-  { i: 18, codes: ['CLIPPED'], dom: 'GAMBLE', c: 4, where: 'body' },
-  // 3쪽
-  { i: 20, codes: ['OFFSCREEN'], dom: 'ADULT', c: 1, v: 2, where: 'body' },
-  { i: 22, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 5, v: 2, where: 'body' },
-  { i: 24, codes: ['TRANSPARENT'], dom: 'LOAN', c: 2, v: 2, where: 'body' },
-  { i: 26, codes: ['OFFSCREEN'], dom: 'GAMBLE', c: 6, v: 0, where: 'iframe' },
-  { i: 28, codes: ['ZERO_WIDTH'], dom: 'GAMBLE', c: 1, where: 'body' },
-  // 4쪽
-  { i: 30, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 7, v: 3, where: 'title' },
-  { i: 32, codes: ['JAMO'], dom: 'ADULT', c: 1, v: 0, where: 'body' },
-  { i: 34, codes: ['TRANSPARENT'], dom: 'TRADE', c: 1, v: 3, where: 'body' },
-  { i: 36, codes: ['OFFSCREEN'], dom: 'DRUG', c: 1, v: 4, where: 'body' },
-  { i: 36, codes: ['VISIBILITY_HIDDEN'], dom: 'ADULT', c: 2, where: 'comment' },
-  { i: 38, codes: ['HTML_COMMENT'], dom: 'GAMBLE', c: 2, where: 'body' },
-  // 5쪽
-  { i: 40, codes: ['OFFSCREEN'], dom: 'LOAN', c: 3, v: 5, where: 'body' },
-  { i: 42, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 4, v: 4, where: 'body' },
-  // 한 요소에 두 기법이 겹친 경우 -> 기법별로 따로 1건씩 센다.
-  { i: 44, codes: ['TRANSPARENT', 'OFFSCREEN'], dom: 'GAMBLE', c: 0, v: 1, where: 'body' },
-  { i: 46, codes: ['JAMO'], dom: 'DRUG', c: 2, v: 1, where: 'body' },
-  { i: 48, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 3, v: 4, where: 'body' },
-  // 6쪽
-  { i: 50, codes: ['TRANSPARENT'], dom: 'ADULT', c: 3, v: 5, where: 'body' },
-  { i: 52, codes: ['OFFSCREEN'], dom: 'TRADE', c: 2, v: 6, where: 'body' },
-  { i: 54, codes: ['JAMO'], dom: 'GAMBLE', c: 1, v: 0, where: 'title' },
-  { i: 56, codes: ['HOMOGLYPH'], dom: 'ADULT', c: 0, v: 0, where: 'body' },
-  { i: 58, codes: ['VISIBLE_AD'], dom: 'GAMBLE', c: 6, where: 'body' },
-  // 7쪽
-  { i: 60, codes: ['OFFSCREEN'], dom: 'DRUG', c: 3, v: 2, where: 'body' },
-  { i: 62, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 2, v: 1, where: 'body' },
-  { i: 64, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 5, v: 0, where: 'body' },
-  { i: 66, codes: ['JAMO'], dom: 'GAMBLE', c: 6, v: 0, where: 'comment' },
-  { i: 68, codes: ['ZERO_WIDTH'], dom: 'TRADE', c: 3, where: 'body' },
-  // 8쪽
-  { i: 70, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 7, v: 0, where: 'iframe' },
-  { i: 72, codes: ['OFFSCREEN'], dom: 'LOAN', c: 1, v: 0, where: 'body' },
-  { i: 74, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 1, v: 2, where: 'body' },
-  { i: 74, codes: ['CLIPPED'], dom: 'TRADE', c: 4, where: 'body' },
-  { i: 76, codes: ['JAMO'], dom: 'GAMBLE', c: 3, v: 2, where: 'body' },
-  { i: 78, codes: ['CLIPPED'], dom: 'ADULT', c: 2, where: 'body' },
-  // 9쪽
-  { i: 80, codes: ['TRANSPARENT'], dom: 'DRUG', c: 1, v: 1, where: 'body' },
-  { i: 82, codes: ['OFFSCREEN'], dom: 'GAMBLE', c: 0, v: 1, where: 'body' },
-  { i: 84, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 6, v: 3, where: 'body' },
-  { i: 86, codes: ['JAMO'], dom: 'TRADE', c: 0, v: 1, where: 'body' },
-  { i: 88, codes: ['VISIBILITY_HIDDEN'], dom: 'LOAN', c: 2, where: 'body' },
-  // 10쪽
-  { i: 90, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 5, v: 0, where: 'title' },
-  { i: 92, codes: ['TRANSPARENT'], dom: 'TRADE', c: 4, v: 2, where: 'body' },
-  { i: 94, codes: ['OFFSCREEN'], dom: 'GAMBLE', c: 4, v: 1, where: 'body' },
-  { i: 96, codes: ['JAMO'], dom: 'ADULT', c: 3, v: 0, where: 'body' },
-  { i: 98, codes: ['VISIBLE_AD'], dom: 'DRUG', c: 0, where: 'body' },
-  { i: 99, codes: ['HTML_COMMENT'], dom: 'GAMBLE', c: 7, where: 'iframe' },
-
-  // --- 댓글 ---------------------------------------------------------------
-  // 댓글은 실제 공공기관 게시판에서 광고가 가장 많이 붙는 자리다. 본문과 같은 9종을
-  // 쪽마다 고르게 깔아, 상세 페이지를 열어 댓글 영역까지 읽는지 확인한다.
-  // 글에 본문 검출이 없는 번호를 골라 검출이 더 많은 글에 퍼지게 했다.
-  { i: 5, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 1, v: 2, where: 'comment' },
-  { i: 7, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 1, v: 0, where: 'comment' },
-  { i: 15, codes: ['OFFSCREEN'], dom: 'LOAN', c: 0, v: 3, where: 'comment' },
-  { i: 17, codes: ['ZERO_WIDTH'], dom: 'ADULT', c: 1, where: 'comment' },
-  { i: 25, codes: ['VISIBLE_AD'], dom: 'GAMBLE', c: 2, where: 'comment' },
-  { i: 27, codes: ['TRANSPARENT'], dom: 'TRADE', c: 0, v: 0, where: 'comment' },
-  // 35·75는 '댓글 더보기'로 접힌 댓글 안에 둔다. 접힌 것 자체가 기법이 되면 정답이
-  // 흐려지므로, 글자 자체를 바꾸는 기법(닮은꼴·자모)만 넣는다.
-  { i: 35, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 2, v: 1, where: 'comment' },
-  { i: 37, codes: ['CLIPPED'], dom: 'DRUG', c: 0, where: 'comment' },
-  { i: 47, codes: ['OFFSCREEN'], dom: 'GAMBLE', c: 5, v: 0, where: 'comment' },
-  { i: 55, codes: ['JAMO'], dom: 'GAMBLE', c: 4, v: 0, where: 'comment' },
-  { i: 57, codes: ['HTML_COMMENT'], dom: 'LOAN', c: 2, where: 'comment' },
-  { i: 65, codes: ['TRANSPARENT'], dom: 'ADULT', c: 0, v: 1, where: 'comment' },
-  { i: 67, codes: ['OFFSCREEN'], dom: 'DRUG', c: 2, v: 1, where: 'comment' },
-  { i: 75, codes: ['JAMO'], dom: 'TRADE', c: 1, v: 0, where: 'comment' },
-  { i: 77, codes: ['HOMOGLYPH'], dom: 'ADULT', c: 0, v: 2, where: 'comment' },
-  { i: 87, codes: ['VISIBLE_AD'], dom: 'TRADE', c: 4, where: 'comment' },
-  { i: 95, codes: ['ZERO_WIDTH'], dom: 'GAMBLE', c: 3, where: 'comment' },
+const VARIANTS = [
+  ...HOMOGLYPH_V.map((x, v) => ({ codes: ['HOMOGLYPH'], v })),
+  ...JAMO_V.map((x, v) => ({ codes: ['JAMO'], v })),
+  ...TRANSPARENT_V.map((x, v) => ({ codes: ['TRANSPARENT'], v })),
+  ...OFFSCREEN_V.map((x, v) => ({ codes: ['OFFSCREEN'], v })),
+  ...EXTRA_CODES.map((c) => ({ codes: [c], v: 0 })),
 ];
 
-/** '댓글 더보기'로 접어 둘 글: 번호 -> 접기 시작 위치(그 앞까지만 바로 보인다). */
-const COMMENT_MORE_AT = new Map([
-  [35, 2],
-  [75, 2],
-]);
-
-/** 함정 댓글을 달 글 번호. TRAP_COMMENTS를 차례로 쓴다. */
-const COMMENT_TRAP_AT = [4, 14, 22, 24, 34, 44, 54, 64, 74, 84, 94, 35];
-
-/** 함정을 심을 글 번호. PLAN이 쓰지 않는 번호만 고른다. */
-const TRAP_AT = [1, 3, 8, 11, 13, 19, 21, 23, 29, 31, 33, 39, 41, 43, 49, 51, 53, 59, 61, 63, 69, 71, 73, 79, 81, 83, 89, 91, 93, 97];
+// ---------------------------------------------------------------- 삽입 만들기
 
 const ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 function esc(s) {
-  return s.replace(/[&<>"]/g, (ch) => ESCAPE[ch]);
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ESCAPE[ch]);
 }
 
 /** 삽입 하나를 HTML과 증거 문구로 만든다. */
@@ -197,7 +100,7 @@ function build(spec, gt) {
   } else if (codes.includes('ZERO_WIDTH')) {
     text = zeroWidth(raw);
     notes.push('폭 0 문자(U+200B) 삽입');
-  } else if (codes.includes('VISIBLE_AD') && spec.where === 'body') {
+  } else if (codes.includes('VISIBLE_AD')) {
     text = spaced(raw.split(' ')[0]) + ' ' + raw.split(' ').slice(1).join(' ');
     notes.push('숨기지 않고 노출 (띄어쓰기 위장)');
   }
@@ -227,6 +130,11 @@ function build(spec, gt) {
     notes.push('visibility:hidden');
   }
 
+  // 글자를 바꾸는 기법인데 실제로 안 바뀌었으면 정답표가 거짓이 된다. 만들 때 막는다.
+  if (codes.some((c) => TEXT_CODES.includes(c)) && text === raw) {
+    throw new Error(`${gt}: ${codes.join('+')} 인데 위장이 걸리지 않았다 -> "${raw}"`);
+  }
+
   const marker = `data-gt="${gt}"`;
   const clsAttr = cls ? ` class="${cls}"` : '';
   const attrPart = attr ? ' ' + attr : '';
@@ -237,9 +145,10 @@ function build(spec, gt) {
       html: `<span ${marker}><!-- ${esc(raw)} --></span>` };
   }
 
-  // 숫자 치환형 한 건은 HTML 엔티티까지 겹쳐 둔다(엔티티 해제 처리 확인용).
-  const inner = codes.includes('OFFSCREEN') && v === 0 && spec.i === 72 ? entities(text) : esc(text);
-  if (codes.includes('OFFSCREEN') && v === 0 && spec.i === 72) notes.push('HTML 엔티티 인코딩');
+  // HTML 엔티티까지 겹쳐 둔 건(엔티티 해제 처리 확인용)
+  const useEntities = !!spec.entities;
+  if (useEntities) notes.push('HTML 엔티티 인코딩');
+  const inner = useEntities ? entities(text) : esc(text);
 
   // 제목은 목록에서 이미 <a> 안에 들어가므로 링크를 또 감싸지 않는다(중첩 <a>는 잘못된 HTML이다).
   const href = spec.where !== 'title' && (codes.includes('VISIBLE_AD') || codes.includes('HOMOGLYPH'))
@@ -256,64 +165,144 @@ function build(spec, gt) {
   };
 }
 
-function trapHtml(t, gt) {
-  if (!t.hidden) return `<p data-gt="${gt}">${esc(t.text)}</p>`;
-  const style = gt.endsWith('2') ? 'style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"' : 'style="display:none"';
-  return `<p data-gt="${gt}" ${style}>${esc(t.text)}</p>`;
+// ---------------------------------------------------------------- 배치 계획
+
+/**
+ * 쪽마다 글 10건 가운데 앞 7자리에 검출을, 뒤 3자리에 함정을 둔다.
+ * 자리는 쪽마다 돌려서 모든 쪽이 똑같은 모양이 되지 않게 한다.
+ */
+const SLOT_ORDER = [0, 1, 3, 4, 6, 7, 9, 2, 5, 8];
+const FINDING_SLOTS = 7;
+/** 검출 자리마다 어디에 심을지. 마지막 자리는 짝수 쪽에서만 iframe. */
+const SLOT_WHERE = ['title', 'body', 'body', 'comment', 'body', 'comment', 'iframe'];
+
+/** 비밀글. 목록에 자물쇠로 표시하고 열지 않아야 한다. 안에는 아무것도 심지 않는다. */
+const SECRET = new Set([47, 88, 134, 189, 231, 276]);
+
+function pageSlots(page) {
+  return SLOT_ORDER.map((x) => (x + page) % POSTS_PER_PAGE);
 }
 
-// ---------------------------------------------------------------- 글 100건
+/** 검출 계획을 만든다. 쪽마다 7건 -> 30쪽 210건. */
+function buildPlan() {
+  const plan = [];
+  let k = 0;
+  for (let page = 0; page < TOTAL_PAGES; page++) {
+    const slots = pageSlots(page);
+    for (let s = 0; s < FINDING_SLOTS; s++) {
+      const i = page * POSTS_PER_PAGE + slots[s];
+      if (SECRET.has(i)) continue; // 비밀글에는 심지 않는다
+      const variant = VARIANTS[k % VARIANTS.length];
+      // 26가지 변형을 한 바퀴 돌 때마다 분야를 옮긴다 -> (변형 x 분야) 조합을 모두 덮는다.
+      const dom = DOMAINS[Math.floor(k / VARIANTS.length) % DOMAINS.length];
+      let where = SLOT_WHERE[s];
+      if (where === 'iframe' && page % 2 === 1) where = 'body';
+      plan.push({ i, codes: variant.codes, v: variant.v, dom, c: k, where });
+      k++;
+    }
+  }
 
-const AUTHORS = ['민원봉사과', '기획예산과', '복지정책과', '도시교통과', '환경관리과', '문화체육과', '안전총괄과', '세무과', '농업기술센터', '보건소'];
+  // 한 요소에 기법이 겹친 경우: 기법별로 따로 1건씩 세야 한다.
+  for (const page of [1, 6, 11, 16, 21, 26]) {
+    plan.push({
+      i: page * POSTS_PER_PAGE + ((page + 2) % POSTS_PER_PAGE),
+      codes: ['TRANSPARENT', 'OFFSCREEN'], v: page % 6, dom: DOMAINS[page % DOMAINS.length], c: page, where: 'body',
+    });
+  }
+  // HTML 엔티티로 한 번 더 감싼 경우
+  for (const page of [4, 19]) {
+    plan.push({
+      i: page * POSTS_PER_PAGE + ((page + 5) % POSTS_PER_PAGE),
+      codes: ['OFFSCREEN'], v: 0, dom: DOMAINS[(page + 1) % DOMAINS.length], c: page, where: 'body', entities: true,
+    });
+  }
+  return plan.filter((x) => !SECRET.has(x.i));
+}
 
-function pad(n) {
-  return String(n).padStart(2, '0');
+const PLAN = buildPlan();
+
+/** 함정을 심을 자리: 쪽마다 뒤 3자리. */
+function buildTrapPlan() {
+  const body = [];
+  const comment = [];
+  let a = 0;
+  let b = 0;
+  for (let page = 0; page < TOTAL_PAGES; page++) {
+    const slots = pageSlots(page);
+    for (let s = FINDING_SLOTS; s < POSTS_PER_PAGE; s++) {
+      const i = page * POSTS_PER_PAGE + slots[s];
+      if (SECRET.has(i)) continue; // 비밀글은 본문이 안 보이므로 함정도 넣지 않는다
+      // 자리 7·9는 본문 함정, 자리 8은 댓글 함정 -> 본문 60건·댓글 30건으로 문구 풀과 맞춘다.
+      if (s === 8) comment.push({ i, t: b++ });
+      else body.push({ i, t: a++ });
+    }
+  }
+  return { body, comment };
+}
+
+const TRAP_PLAN = buildTrapPlan();
+
+// ---------------------------------------------------------------- 글 300건
+
+const AUTHORS = ['민원봉사과', '기획예산과', '복지정책과', '도시교통과', '환경관리과', '문화체육과',
+  '안전총괄과', '세무과', '농업기술센터', '보건소', '건축과', '청소행정과'];
+
+function pad(n, w = 3) {
+  return String(n).padStart(w, '0');
 }
 
 /** 2026-01-02 ~ 2026-10-12 사이로 고정 날짜를 만든다. */
 function dateFor(i) {
   const day = 2 + ((i * 3) % 280);
   const d = new Date(Date.UTC(2026, 0, day));
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function trapHtml(t, gt) {
+  if (!t.hidden) return `<p data-gt="${gt}">${esc(t.text)}</p>`;
+  // 숨기는 방식도 돌려 쓴다(화면낭독기용 숨김·접힌 메뉴·IR 텍스트).
+  const n = Number(gt.slice(1)) % 3;
+  const style = n === 0 ? 'style="display:none"'
+    : n === 1 ? 'style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"'
+      : 'style="font-size:0;line-height:0"';
+  return `<p data-gt="${gt}" ${style}>${esc(t.text)}</p>`;
 }
 
 const POSTS = [];
 
 {
-  const byIndex = new Map();
+  const findingsAt = new Map();
   for (const s of PLAN) {
-    const arr = byIndex.get(s.i) || [];
+    const arr = findingsAt.get(s.i) || [];
     arr.push(s);
-    byIndex.set(s.i, arr);
+    findingsAt.set(s.i, arr);
   }
+  const bodyTrapAt = new Map(TRAP_PLAN.body.map((x) => [x.i, x.t]));
+  const commentTrapAt = new Map(TRAP_PLAN.comment.map((x) => [x.i, x.t]));
 
   let seq = 0;
   for (let i = 0; i < TOTAL_POSTS; i++) {
-    const specs = byIndex.get(i) || [];
+    const secret = SECRET.has(i);
+    const specs = findingsAt.get(i) || [];
     const injections = specs.map((s) => build(s, `G${pad(++seq)}`));
 
-    const trapPos = TRAP_AT.indexOf(i);
-    const traps =
-      trapPos < 0
-        ? []
-        : (() => {
-            const t = TRAP_LINES[trapPos % TRAP_LINES.length];
-            const gt = `N${pad(trapPos + 1)}`;
-            return [{ gt, text: t.text, hidden: t.hidden, note: t.note, html: trapHtml(t, gt) }];
-          })();
+    // 본문 함정
+    const traps = [];
+    if (!secret && bodyTrapAt.has(i)) {
+      const idx = bodyTrapAt.get(i);
+      const t = TRAP_LINES[idx % TRAP_LINES.length];
+      const gt = `N${pad(idx + 1)}`;
+      traps.push({ gt, text: t.text, hidden: t.hidden, note: t.note, html: trapHtml(t, gt) });
+    }
 
     const titleInj = injections.find((x) => x.where === 'title');
     const plainTitle = NORMAL_TITLES[i % NORMAL_TITLES.length];
     const title = titleInj ? titleInj.evidence : plainTitle;
     const titleHtml = titleInj ? titleInj.html : esc(plainTitle);
 
+    // 댓글
     const commentInj = injections.filter((x) => x.where === 'comment');
-    const moreFrom = COMMENT_MORE_AT.get(i);
-    const trapPosC = COMMENT_TRAP_AT.indexOf(i);
-
-    // 정상 댓글 수. '댓글 더보기'가 있는 글은 접히는 부분이 생기게 3건으로 맞춘다.
-    const normalCount = moreFrom === undefined ? [0, 1, 2, 3, 2, 1, 4, 2, 1, 3][i % 10] : 3;
-
+    const normalCount = [0, 1, 2, 3, 2, 1, 4, 2, 1, 3][i % 10];
     const commentTraps = [];
     const comments = [];
 
@@ -325,9 +314,10 @@ const POSTS = [];
       });
     }
 
-    if (trapPosC >= 0) {
-      const t = TRAP_COMMENTS[trapPosC % TRAP_COMMENTS.length];
-      const gt = `C${pad(trapPosC + 1)}`;
+    if (!secret && commentTrapAt.has(i)) {
+      const idx = commentTrapAt.get(i);
+      const t = TRAP_COMMENTS[idx % TRAP_COMMENTS.length];
+      const gt = `C${pad(idx + 1)}`;
       commentTraps.push({ gt, text: t.text, hidden: t.hidden, note: t.note, html: '' });
       comments.push({
         author: COMMENT_AUTHORS[(i + 5) % COMMENT_AUTHORS.length],
@@ -360,26 +350,41 @@ const POSTS = [];
       titleHtml,
       author: AUTHORS[i % AUTHORS.length],
       date: dateFor(i),
-      hits: 37 + ((i * 17) % 900),
-      body: [NORMAL_BODY[i % NORMAL_BODY.length], NORMAL_BODY[(i + 3) % NORMAL_BODY.length]],
+      hits: 37 + ((i * 17) % 1900),
+      body: [NORMAL_BODY[i % NORMAL_BODY.length], NORMAL_BODY[(i + 7) % NORMAL_BODY.length]],
       injections,
       traps,
       comments,
       commentTraps,
-      // 이 위치부터는 '댓글 더보기'를 눌러야 보인다(없으면 null).
-      // 접힌 댓글은 처음 HTML에 없고, 더보기를 누르면 서버에서 받아 와 붙는다.
-      commentsMoreFrom: moreFrom === undefined || comments.length <= moreFrom ? null : moreFrom,
-      // 접힌 쪽에 들어 있는 채점 표식. 처음 HTML에는 없으므로 따로 적어 둔다.
-      collapsedGts:
-        moreFrom === undefined || comments.length <= moreFrom
-          ? []
-          : comments
-              .slice(moreFrom)
-              .flatMap((c) => [...String(c.html).matchAll(/data-gt="([^"]+)"/g)].map((m) => m[1])),
+      commentsMoreFrom: null,
+      collapsedGts: [],
       iframeId: iframeInj.length ? 1001 + i : null,
-      // 목록에 자물쇠로 표시하고 열지 않아야 하는 비밀글. 안에는 아무 광고도 없다.
-      secret: i === 45 || i === 85,
+      secret,
     });
+  }
+
+  /**
+   * '댓글 더보기'로 접을 글을 고른다.
+   *
+   * 접힌 댓글은 처음 HTML에 없고 더보기를 누르면 서버에서 받아 와 붙는다.
+   * 숨겨 두면 그 광고 댓글이 display:none 으로도 잡혀 어느 기법이 정답인지 흐려지므로,
+   * 글자 자체를 바꾸는 기법(닮은꼴·자모·폭0)만 든 글을 고른다.
+   */
+  const contentOnly = (p) =>
+    p.injections.some((x) => x.where === 'comment') &&
+    p.injections.filter((x) => x.where === 'comment').every((x) => x.codes.every((c) => TEXT_CODES.includes(c)));
+  const picked = new Set();
+  for (const p of POSTS) {
+    if (picked.size >= 8 || p.secret || !contentOnly(p)) continue;
+    if ([...picked].some((q) => q.page === p.page)) continue; // 쪽마다 최대 1건
+    const more = Math.max(1, p.comments.length - p.injections.filter((x) => x.where === 'comment').length - 1);
+    if (p.comments.length <= more) continue;
+    p.commentsMoreFrom = more;
+    p.collapsedGts = p.comments
+      .slice(more)
+      .flatMap((c) => [...String(c.html).matchAll(/data-gt="([^"]+)"/g)].map((m) => m[1]));
+    if (p.collapsedGts.length) picked.add(p);
+    else p.commentsMoreFrom = null;
   }
 }
 
@@ -396,7 +401,7 @@ function clampPage(raw) {
   return Math.min(Math.max(1, Math.trunc(n)), TOTAL_PAGES);
 }
 
-/** iframe 문서에 들어갈 삽입(해당 글의 where==='iframe') */
+/** iframe 문서에 들어갈 삽입 */
 function iframeInjections(post) {
   return post.injections.filter((x) => x.where === 'iframe');
 }
