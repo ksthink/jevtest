@@ -1,0 +1,4 @@
+# 탐지 도구가 --respect-robots로 돌아도 막히지 않아야 하므로 크롤링은 전부 허용한다.
+# 검색엔진 색인은 각 페이지의 <meta name="robots" content="noindex"> 로 막는다.
+User-agent: *
+Allow: /

@@ -1,0 +1,4 @@
+# 배포에 필요 없는 것들
+tools/
+server.js
+README.md
