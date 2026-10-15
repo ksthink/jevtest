@@ -285,6 +285,7 @@ data/posts.js         글 100건과 삽입 계획  ← 단일 원본
 data/pages.js         게시판 밖 페이지에 심은 항목
 tools/check.mjs       사이트 자기 점검
 tools/score.mjs       탐지 결과 채점
+docs/improve-detect.md  검증 결과로 만든 탐지 도구 개선 지시문
 ```
 
 `data/posts.js`의 `PLAN` 배열이 **무엇을 어디에 심을지** 정하는 유일한 곳입니다.
