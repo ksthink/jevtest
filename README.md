@@ -206,6 +206,19 @@ node tools/score.mjs --site https://<배포주소> \
   --result ./result.json --extra ./result_extra.json
 ```
 
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--site` | `http://localhost:3000` | 검사한 사이트 주소 |
+| `--result` | `./result.json` | 적격평가 4종 결과 |
+| `--extra` | `./result_extra.json` | 추가 유형 결과 |
+| `--answer-key` | `<site>/api/answer-key` | 정답표 주소. 검사한 사이트에 직접 닿을 수 없을 때 다른 데서 받아 온다 |
+
+```bash
+# 사이트에 닿을 수 없는 곳에서 채점할 때 (정답표만 로컬 서버에서 받는다)
+node tools/score.mjs --site https://<배포주소> \
+  --answer-key "http://localhost:3000/api/answer-key?origin=https://<배포주소>"
+```
+
 ```
 정답 수     : 73 (함정 68건)
 보고된 검출 : 57 (result.json 43, result_extra.json 14)
@@ -228,8 +241,21 @@ node tools/score.mjs --site https://<배포주소> \
 대조 순서는 이렇습니다.
 
 1. 보고된 `location`에서 `data-gt` 표식을 읽어 `gt`를 찾는다.
-2. 표식이 없으면 `evidence_text`가 같은 정답을 찾는다(도구가 자기 선택자로 적어도 맞춰진다).
-3. `gt` + 기법이 맞으면 TP, 정답표에 없으면 FP, 못 찾은 정답은 FN.
+2. 표식이 없으면 **주소 + `evidence_text` + 기법**이 같은 정답을 찾는다(도구가 자기 선택자로 적어도 맞춰진다).
+3. 그래도 없으면 `evidence_text` + 기법으로 찾는다.
+4. `gt` + 기법이 맞으면 TP, 정답표에 없으면 FP, 못 찾은 정답은 FN.
+
+2)에서 주소를 함께 보는 것이 중요합니다. 같은 광고 문구를 여러 글에 심어 두었기 때문에,
+원문만으로 맞추면 서로 다른 글의 검출이 한 정답에 몰려 멀쩡한 검출이 오탐으로 깎입니다.
+
+주소를 비교할 때는 경로마다 그 페이지를 가리키는 변수만 남깁니다. 글 상세의 `page`처럼
+화면 표시만 바꾸는 변수는 지웁니다(`?id=1045&page=5`와 `?id=1045`는 같은 글입니다).
+`extra_finding`에 `ZERO_WIDTH(폭 0 문자 삽입)`처럼 설명이 붙어 있어도 앞쪽 코드만 떼어 맞춥니다.
+NFD 자모 분해처럼 눈에 안 보이는 표기 차이도 흡수합니다.
+
+같은 정답을 두 주소로 보고한 것은 오탐이 아니라 **중복**으로 따로 셉니다(제목 검출은 목록과
+상세 양쪽에 보이므로 정상입니다). 요강은 (url + location + technique)을 1건으로 세므로
+중복으로 집계된 건도 요강 기준으로는 별건으로 인정됩니다.
 
 ### 사이트 자기 점검
 

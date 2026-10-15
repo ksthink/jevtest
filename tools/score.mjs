@@ -23,6 +23,9 @@ function arg(name, fallback) {
 const site = (arg('site', 'http://localhost:3000') || '').replace(/\/+$/, '');
 const resultPath = arg('result', './result.json');
 const extraPath = arg('extra', './result_extra.json');
+// 검사한 사이트에 직접 닿을 수 없을 때 정답표만 다른 데서 받아 온다.
+// 예: --answer-key "http://localhost:3000/api/answer-key?origin=https://xxx.vercel.app"
+const keyUrlArg = arg('answer-key', null);
 
 function readJson(p, label) {
   try {
@@ -35,7 +38,7 @@ function readJson(p, label) {
   }
 }
 
-const keyUrl = `${site}/api/answer-key?origin=${encodeURIComponent(site)}`;
+const keyUrl = keyUrlArg || `${site}/api/answer-key?origin=${encodeURIComponent(site)}`;
 const key = await fetch(keyUrl).then((r) => {
   if (!r.ok) throw new Error(`정답표를 받지 못했습니다: ${r.status} ${keyUrl}`);
   return r.json();
@@ -44,36 +47,79 @@ const key = await fetch(keyUrl).then((r) => {
 const main = readJson(resultPath, 'result.json');
 const extra = readJson(extraPath, 'result_extra.json');
 
-/** 주소를 비교할 수 있게 다듬는다(쿼리 순서·불필요한 변수 정리). */
+/**
+ * 주소를 비교할 수 있게 다듬는다.
+ *
+ * 경로마다 그 페이지를 가리키는 변수만 남긴다. 글 상세의 `page`처럼 화면 표시만 바꾸는
+ * 변수는 지운다(목록에서 들어오면 `?id=1045&page=5`, 바로 열면 `?id=1045`로 같은 글이다).
+ */
+const ID_PARAMS = {
+  '/board/view': ['id'],
+  '/jsboard/view.do': ['nttId'],
+  '/iframe/ad': ['id'],
+  '/api/comments': ['id'],
+  '/board/list': ['page'],
+  '/gallery': ['page'],
+  '/jsboard/list.do': ['pageIndex'],
+};
+
 function normUrl(u) {
   try {
     const x = new URL(u, site);
+    const path = x.pathname.replace(/\/+$/, '') || '/';
+    const keepNames = ID_PARAMS[path];
     const keep = new URLSearchParams();
     for (const [k, v] of [...x.searchParams].sort()) {
-      if (['page', 'pageIndex', 'id', 'nttId'].includes(k)) keep.set(k, v);
+      // 아는 경로는 식별 변수만, 모르는 경로는 쿼리를 그대로 둔다.
+      if (!keepNames || keepNames.includes(k)) keep.set(k, v);
     }
     const q = keep.toString();
-    return `${x.origin}${x.pathname}${q ? '?' + q : ''}`;
+    return `${x.protocol}//${x.host}${path}${q ? '?' + q : ''}`.replace(/^https:/, 'http:');
   } catch {
     return String(u);
   }
 }
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+/** NFD 자모 분해처럼 눈에 안 보이는 표기 차이를 흡수한 비교용 형태. */
+const fold = (s) => norm(s).normalize('NFC');
 
-// 정답 색인: gt+code, 그리고 evidence_text+code 로도 찾을 수 있게 한다.
+/**
+ * `extra_finding`에서 유형 코드만 떼어 낸다.
+ * 도구가 `HTML_COMMENT(HTML 주석 속 불법광고)`처럼 설명을 붙여 적어도 맞춰진다.
+ */
+function codeOf(raw) {
+  const m = /^[A-Z_]+/.exec(String(raw ?? '').trim().toUpperCase());
+  return m ? m[0] : String(raw ?? '').trim().toUpperCase();
+}
+
+/**
+ * 정답 색인 3단.
+ *
+ * 1) gt+기법       — 도구가 `[data-gt="G01"]`처럼 표식을 적었을 때
+ * 2) 주소+원문+기법 — 도구가 자기 선택자로 적었을 때 (여기가 보통 쓰인다)
+ * 3) 원문+기법      — 주소 표기가 어긋났을 때의 마지막 수단
+ *
+ * 2)가 꼭 필요하다. 같은 광고 문구를 여러 글에 심어 두었기 때문에 원문만으로 맞추면
+ * 서로 다른 글의 검출이 한 정답에 몰려 멀쩡한 검출이 오탐으로 깎인다.
+ */
 const byGtCode = new Map();
+const byUrlEvCode = new Map();
 const byEvCode = new Map();
 for (const f of key.expected_findings) {
   byGtCode.set(`${f.gt}|${f.code}`, f);
-  const ek = `${norm(f.evidence_text)}|${f.code}`;
-  if (!byEvCode.has(ek)) byEvCode.set(ek, f);
+  for (const ev of new Set([norm(f.evidence_text), fold(f.evidence_text)])) {
+    const uk = `${normUrl(f.url)}|${ev}|${f.code}`;
+    if (!byUrlEvCode.has(uk)) byUrlEvCode.set(uk, f);
+    const ek = `${ev}|${f.code}`;
+    if (!byEvCode.has(ek)) byEvCode.set(ek, f);
+  }
 }
 const trapByEv = new Map();
 const trapGts = new Set();
 for (const a of key.expected_absent) {
   trapGts.add(a.gt);
-  trapByEv.set(norm(a.text), a);
+  for (const t of new Set([norm(a.text), fold(a.text)])) trapByEv.set(t, a);
 }
 
 function gtFromLocation(loc) {
@@ -82,25 +128,33 @@ function gtFromLocation(loc) {
 }
 
 const rows = [
-  ...main.map((r) => ({ ...r, bucket: 'main', code: r.technique ?? 'UNKNOWN' })),
-  ...extra.map((r) => ({ ...r, bucket: 'extra', code: r.extra_finding ?? r.technique ?? 'UNKNOWN' })),
+  ...main.map((r) => ({ ...r, bucket: 'main', code: codeOf(r.technique) })),
+  ...extra.map((r) => ({ ...r, bucket: 'extra', code: codeOf(r.extra_finding ?? r.technique) })),
 ];
 
 const tpGt = new Set();
 const fp = [];
 const trapHits = [];
 
+const dup = [];
 for (const r of rows) {
-  const code = String(r.code).toUpperCase();
+  const code = r.code;
   const gt = gtFromLocation(r.location);
+  const u = normUrl(r.url);
+  const evs = [norm(r.evidence_text), fold(r.evidence_text)];
+
   let hit = gt ? byGtCode.get(`${gt}|${code}`) : null;
-  if (!hit) hit = byEvCode.get(`${norm(r.evidence_text)}|${code}`);
+  for (const ev of evs) if (!hit) hit = byUrlEvCode.get(`${u}|${ev}|${code}`);
+  for (const ev of evs) if (!hit) hit = byEvCode.get(`${ev}|${code}`);
 
   if (hit) {
-    tpGt.add(`${hit.gt}|${hit.code}`);
+    const k = `${hit.gt}|${hit.code}`;
+    // 같은 정답을 두 번 보고한 것은 오탐이 아니라 중복이다(채점은 1건으로 합친다).
+    if (tpGt.has(k)) dup.push(r);
+    tpGt.add(k);
     continue;
   }
-  if ((gt && trapGts.has(gt)) || trapByEv.has(norm(r.evidence_text))) {
+  if ((gt && trapGts.has(gt)) || evs.some((ev) => trapByEv.has(ev))) {
     trapHits.push(r);
   }
   fp.push(r);
@@ -122,6 +176,7 @@ console.log('');
 console.log(`맞힘(TP)    : ${tp}`);
 console.log(`놓침(FN)    : ${fn.length}`);
 console.log(`오탐(FP)    : ${fp.length}  그중 함정을 건드린 것 ${trapHits.length}건`);
+if (dup.length) console.log(`중복        : ${dup.length}  (같은 정답을 두 번 보고 - 채점은 1건으로 합침)`);
 console.log(`정밀도      : ${pct(prec)}   재현율: ${pct(rec)}   F1: ${pct(f1)}`);
 
 // 유형별
