@@ -1,0 +1,13 @@
+{
+  "name": "board-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "공공기관 게시판 모사 테스트 사이트 (불법광고 탐지 도구 검증용). 의존성 없음.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node tools/check.mjs",
+    "score": "node tools/score.mjs"
+  },
+  "engines": { "node": ">=18" }
+}
