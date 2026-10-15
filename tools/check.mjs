@@ -28,9 +28,9 @@ let checked = 0;
 
 // 1) 검출되어야 하는 것: 주소의 HTML에 data-gt와 원문이 함께 있어야 한다.
 for (const f of key.expected_findings) {
-  // iframe 안에 있는 건은 iframe 문서를 직접 받아서 본다.
+  // iframe 안에 있는 건은 iframe 문서를, '댓글 더보기'로 나타나는 건은 댓글 조각을 받아서 본다.
   const m = /^iframe\[src="([^"]+)"\]/.exec(f.location);
-  const target = m ? m[1] : f.url;
+  const target = m ? m[1] : f.via === 'comment-more' ? `${site}/api/comments?id=${f.post_id}` : f.url;
   let html;
   try {
     html = await body(target);
@@ -56,9 +56,10 @@ for (const f of key.expected_findings) {
 // 2) 함정: 적어 둔 주소의 HTML에 있어야 한다(없으면 정답표가 낡은 것).
 for (const a of key.expected_absent) {
   if (a.url.startsWith('(')) continue;
+  const url = a.via === 'comment-more' ? `${site}/api/comments?id=${a.post_id}` : a.url;
   let html;
   try {
-    html = await body(a.url);
+    html = await body(url);
   } catch (e) {
     console.log(`FAIL trap ${a.gt}: 주소를 받지 못함 ${e.message}`);
     bad++;
@@ -66,7 +67,7 @@ for (const a of key.expected_absent) {
   }
   checked++;
   if (!html.includes(`data-gt="${a.gt}"`)) {
-    console.log(`FAIL trap ${a.gt}: ${a.url} 에 data-gt="${a.gt}" 가 없음`);
+    console.log(`FAIL trap ${a.gt}: ${url} 에 data-gt="${a.gt}" 가 없음`);
     bad++;
   }
 }
@@ -96,6 +97,60 @@ for (const id of ids) {
   }
 }
 
+// 5) '댓글 더보기'가 있는 글: 접힌 댓글이 처음 HTML에는 없고 조각에는 있어야 한다.
+const moreIds = new Set(
+  [...key.expected_findings, ...key.expected_absent].filter((x) => x.via === 'comment-more').map((x) => x.post_id)
+);
+for (const id of moreIds) {
+  const page = await body(`${site}/board/view?id=${id}`);
+  const frag = await body(`${site}/api/comments?id=${id}`);
+  checked++;
+  if (!page.includes(`cmt-more-btn-${id}`)) {
+    console.log(`FAIL 더보기: /board/view?id=${id} 에 '댓글 더보기' 버튼이 없음`);
+    bad++;
+  }
+  for (const x of [...key.expected_findings, ...key.expected_absent]) {
+    if (x.via !== 'comment-more' || x.post_id !== id) continue;
+    if (page.includes(`data-gt="${x.gt}"`)) {
+      console.log(`FAIL 더보기: ${x.gt} 가 누르기 전 HTML에 이미 있음 (/board/view?id=${id})`);
+      bad++;
+    }
+    if (!frag.includes(`data-gt="${x.gt}"`)) {
+      console.log(`FAIL 더보기: ${x.gt} 가 /api/comments?id=${id} 조각에 없음`);
+      bad++;
+    }
+  }
+}
+
+// 6) 댓글이 실제로 달려 있고, 댓글 검출이 상세 페이지에서 보이는지
+const commentFindings = key.expected_findings.filter((f) => f.where === 'comment' && f.via !== 'comment-more');
+for (const f of commentFindings) {
+  const html = await body(f.url);
+  checked++;
+  const i = html.indexOf(`data-gt="${f.gt}"`);
+  if (i < 0) continue; // 1)에서 이미 잡힌다
+  // 검출이 댓글 영역(<h3>댓글 …</h3> 뒤)에 있어야 한다.
+  if (i < html.indexOf('<h3>댓글')) {
+    console.log(`FAIL 댓글: ${f.gt} 가 댓글 영역이 아니라 본문에 있음 (${f.url})`);
+    bad++;
+  }
+}
+
 console.log(`\n확인 ${checked}건, 문제 ${bad}건`);
+const where = {};
+for (const f of key.expected_findings) {
+  const k2 = `${f.gt}|${f.code}`;
+  if (where[k2]) continue;
+  where[k2] = 1;
+}
+const perWhere = {};
+const seenW = new Set();
+for (const f of key.expected_findings) {
+  const k2 = `${f.gt}|${f.code}`;
+  if (seenW.has(k2)) continue;
+  seenW.add(k2);
+  perWhere[f.where] = (perWhere[f.where] || 0) + 1;
+}
 console.log(`정답 ${key.counts.unique_findings}건 / 함정 ${key.counts.traps}건 / 글 ${key.counts.posts}건`);
+console.log(`위치별 정답: ${Object.entries(perWhere).map(([k2, v]) => `${k2} ${v}`).join(' · ')}`);
 process.exit(bad ? 1 : 0);

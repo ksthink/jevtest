@@ -4,7 +4,10 @@
  * 페이지 HTML과 정답표를 같은 자료에서 만들기 때문에 둘이 어긋날 수 없다.
  * 모든 값은 고정이다(난수·현재시각 없음) -> 배포해도 매번 같은 사이트가 나온다.
  */
-const { AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES } = require('./copy');
+const {
+  AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
+  COMMENT_AUTHORS, NORMAL_COMMENTS, OFFICIAL_REPLIES, TRAP_COMMENTS,
+} = require('./copy');
 const { circled, cyrillic, entities, fullwidth, jamo, jamoLatin, leet, mathBold, nfd, spaced, zeroWidth } = require('../lib/disguise');
 
 const MAIN_CODES = ['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN'];
@@ -128,7 +131,40 @@ const PLAN = [
   { i: 96, codes: ['JAMO'], dom: 'ADULT', c: 3, v: 0, where: 'body' },
   { i: 98, codes: ['VISIBLE_AD'], dom: 'DRUG', c: 0, where: 'body' },
   { i: 99, codes: ['HTML_COMMENT'], dom: 'GAMBLE', c: 7, where: 'iframe' },
+
+  // --- 댓글 ---------------------------------------------------------------
+  // 댓글은 실제 공공기관 게시판에서 광고가 가장 많이 붙는 자리다. 본문과 같은 9종을
+  // 쪽마다 고르게 깔아, 상세 페이지를 열어 댓글 영역까지 읽는지 확인한다.
+  // 글에 본문 검출이 없는 번호를 골라 검출이 더 많은 글에 퍼지게 했다.
+  { i: 5, codes: ['TRANSPARENT'], dom: 'GAMBLE', c: 1, v: 2, where: 'comment' },
+  { i: 7, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 1, v: 0, where: 'comment' },
+  { i: 15, codes: ['OFFSCREEN'], dom: 'LOAN', c: 0, v: 3, where: 'comment' },
+  { i: 17, codes: ['ZERO_WIDTH'], dom: 'ADULT', c: 1, where: 'comment' },
+  { i: 25, codes: ['VISIBLE_AD'], dom: 'GAMBLE', c: 2, where: 'comment' },
+  { i: 27, codes: ['TRANSPARENT'], dom: 'TRADE', c: 0, v: 0, where: 'comment' },
+  // 35·75는 '댓글 더보기'로 접힌 댓글 안에 둔다. 접힌 것 자체가 기법이 되면 정답이
+  // 흐려지므로, 글자 자체를 바꾸는 기법(닮은꼴·자모)만 넣는다.
+  { i: 35, codes: ['HOMOGLYPH'], dom: 'GAMBLE', c: 2, v: 1, where: 'comment' },
+  { i: 37, codes: ['CLIPPED'], dom: 'DRUG', c: 0, where: 'comment' },
+  { i: 47, codes: ['OFFSCREEN'], dom: 'GAMBLE', c: 5, v: 0, where: 'comment' },
+  { i: 55, codes: ['JAMO'], dom: 'GAMBLE', c: 4, v: 0, where: 'comment' },
+  { i: 57, codes: ['HTML_COMMENT'], dom: 'LOAN', c: 2, where: 'comment' },
+  { i: 65, codes: ['TRANSPARENT'], dom: 'ADULT', c: 0, v: 1, where: 'comment' },
+  { i: 67, codes: ['OFFSCREEN'], dom: 'DRUG', c: 2, v: 1, where: 'comment' },
+  { i: 75, codes: ['JAMO'], dom: 'TRADE', c: 1, v: 0, where: 'comment' },
+  { i: 77, codes: ['HOMOGLYPH'], dom: 'ADULT', c: 0, v: 2, where: 'comment' },
+  { i: 87, codes: ['VISIBLE_AD'], dom: 'TRADE', c: 4, where: 'comment' },
+  { i: 95, codes: ['ZERO_WIDTH'], dom: 'GAMBLE', c: 3, where: 'comment' },
 ];
+
+/** '댓글 더보기'로 접어 둘 글: 번호 -> 접기 시작 위치(그 앞까지만 바로 보인다). */
+const COMMENT_MORE_AT = new Map([
+  [35, 2],
+  [75, 2],
+]);
+
+/** 함정 댓글을 달 글 번호. TRAP_COMMENTS를 차례로 쓴다. */
+const COMMENT_TRAP_AT = [4, 14, 22, 24, 34, 44, 54, 64, 74, 84, 94, 35];
 
 /** 함정을 심을 글 번호. PLAN이 쓰지 않는 번호만 고른다. */
 const TRAP_AT = [1, 3, 8, 11, 13, 19, 21, 23, 29, 31, 33, 39, 41, 43, 49, 51, 53, 59, 61, 63, 69, 71, 73, 79, 81, 83, 89, 91, 93, 97];
@@ -272,11 +308,47 @@ const POSTS = [];
     const titleHtml = titleInj ? titleInj.html : esc(plainTitle);
 
     const commentInj = injections.filter((x) => x.where === 'comment');
-    const comments = [
-      ...(i % 7 === 0 ? [{ author: '시민A', date: dateFor(i + 1), html: '안내 감사합니다. 잘 확인했습니다.' }] : []),
-      ...commentInj.map((x, k) => ({ author: `주민${k + 1}`, date: dateFor(i + 2), html: x.html })),
-      ...(i % 5 === 0 ? [{ author: '담당자', date: dateFor(i + 3), html: '문의하신 내용은 담당 부서로 전달하였습니다.' }] : []),
-    ];
+    const moreFrom = COMMENT_MORE_AT.get(i);
+    const trapPosC = COMMENT_TRAP_AT.indexOf(i);
+
+    // 정상 댓글 수. '댓글 더보기'가 있는 글은 접히는 부분이 생기게 3건으로 맞춘다.
+    const normalCount = moreFrom === undefined ? [0, 1, 2, 3, 2, 1, 4, 2, 1, 3][i % 10] : 3;
+
+    const commentTraps = [];
+    const comments = [];
+
+    for (let k = 0; k < normalCount; k++) {
+      comments.push({
+        author: COMMENT_AUTHORS[(i + k) % COMMENT_AUTHORS.length],
+        date: dateFor(i + 1 + k),
+        html: esc(NORMAL_COMMENTS[(i * 3 + k) % NORMAL_COMMENTS.length]),
+      });
+    }
+
+    if (trapPosC >= 0) {
+      const t = TRAP_COMMENTS[trapPosC % TRAP_COMMENTS.length];
+      const gt = `C${pad(trapPosC + 1)}`;
+      commentTraps.push({ gt, text: t.text, hidden: t.hidden, note: t.note, html: '' });
+      comments.push({
+        author: COMMENT_AUTHORS[(i + 5) % COMMENT_AUTHORS.length],
+        date: dateFor(i + 5),
+        html: `<span data-gt="${gt}">${esc(t.text)}</span>`,
+      });
+    }
+
+    // 광고 댓글은 맨 뒤에 붙인다(실제 스팸도 최근 댓글로 달린다).
+    for (const x of commentInj) {
+      comments.push({ author: COMMENT_AUTHORS[(i + 7) % COMMENT_AUTHORS.length], date: dateFor(i + 7), html: x.html });
+    }
+
+    if (i % 5 === 0 && normalCount > 0) {
+      comments.push({
+        author: '담당자',
+        date: dateFor(i + 9),
+        html: esc(OFFICIAL_REPLIES[i % OFFICIAL_REPLIES.length]),
+        official: true,
+      });
+    }
 
     const iframeInj = injections.filter((x) => x.where === 'iframe');
 
@@ -293,6 +365,17 @@ const POSTS = [];
       injections,
       traps,
       comments,
+      commentTraps,
+      // 이 위치부터는 '댓글 더보기'를 눌러야 보인다(없으면 null).
+      // 접힌 댓글은 처음 HTML에 없고, 더보기를 누르면 서버에서 받아 와 붙는다.
+      commentsMoreFrom: moreFrom === undefined || comments.length <= moreFrom ? null : moreFrom,
+      // 접힌 쪽에 들어 있는 채점 표식. 처음 HTML에는 없으므로 따로 적어 둔다.
+      collapsedGts:
+        moreFrom === undefined || comments.length <= moreFrom
+          ? []
+          : comments
+              .slice(moreFrom)
+              .flatMap((c) => [...String(c.html).matchAll(/data-gt="([^"]+)"/g)].map((m) => m[1])),
       iframeId: iframeInj.length ? 1001 + i : null,
       // 목록에 자물쇠로 표시하고 열지 않아야 하는 비밀글. 안에는 아무 광고도 없다.
       secret: i === 45 || i === 85,
@@ -318,6 +401,11 @@ function iframeInjections(post) {
   return post.injections.filter((x) => x.where === 'iframe');
 }
 
+/** 댓글에 들어갈 삽입 */
+function commentInjections(post) {
+  return post.injections.filter((x) => x.where === 'comment');
+}
+
 /** 본문에 들어갈 삽입 */
 function bodyInjections(post) {
   return post.injections.filter((x) => x.where === 'body');
@@ -326,4 +414,5 @@ function bodyInjections(post) {
 module.exports = {
   MAIN_CODES, EXTRA_CODES, POSTS_PER_PAGE, TOTAL_POSTS, TOTAL_PAGES,
   POSTS, POST_BY_ID, postsOnPage, clampPage, iframeInjections, bodyInjections,
+  commentInjections,
 };
