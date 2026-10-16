@@ -59,15 +59,16 @@ const OFFSCREEN_V = [
 ];
 
 /**
- * 분야 회전 순서.
+ * 분야 회전 순서. 검출마다 한 칸씩 돌린다.
  *
- * 요강 5개 분야가 10, 요강 밖 유형이 2 비율이다. 요강 밖 유형도 실제로 올라오므로
- * 넣어 두되, 적격평가 점수를 재는 숫자가 요강 밖 내용에 휘둘리지 않도록 비중을 낮춘다.
+ * 요강 5개 분야가 15칸, 요강 밖 유형이 3칸이라 약 83% : 17%가 된다. 요강 밖 유형도
+ * 실제로 올라오므로 넣어 두되, 적격평가 점수를 재는 숫자가 거기에 휘둘리지 않게 한다.
  */
 const DOMAIN_CYCLE = [
   'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
   'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
-  'INVEST', 'JOB',
+  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
+  'INVEST', 'JOB', 'HACK',
 ];
 
 /**
@@ -212,7 +213,9 @@ function buildPlan() {
       if (SECRET.has(i)) continue; // 비밀글에는 심지 않는다
       const variant = VARIANTS[k % VARIANTS.length];
       // 26가지 변형을 한 바퀴 돌 때마다 분야를 옮긴다 -> (변형 x 분야) 조합을 모두 덮는다.
-      const dom = DOMAIN_CYCLE[Math.floor(k / VARIANTS.length) % DOMAIN_CYCLE.length];
+      // 변형(26가지)과 분야(18칸)의 길이가 서로 나누어떨어지지 않아, 검출마다 한 칸씩
+      // 돌리면 (변형 x 분야) 조합이 고르게 섞인다.
+      const dom = DOMAIN_CYCLE[k % DOMAIN_CYCLE.length];
       let where = SLOT_WHERE[s];
       if (where === 'iframe' && page % 2 === 1) where = 'body';
       plan.push({ i, codes: variant.codes, v: variant.v, dom, c: k, where });
