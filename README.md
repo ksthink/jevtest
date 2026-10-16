@@ -448,6 +448,7 @@ tools/harvest.mjs     수집한 사례 정제 (식별자 치환 + 분야 추정)
 tools/dict.mjs        DIC.md 에서 사전 JSON 추출·검사
 DIC.md                불법광고 필터링 말뭉치 사전 (분야·등급별 어휘 + 판정 규칙)
 docs/improve-detect.md  검증 결과로 만든 탐지 도구 개선 지시문
+docs/pipeline-design.md 2단 판정 파이프라인 설계 (규칙 -> JEV AI)
 ```
 
 `data/posts.js`의 `PLAN` 배열이 **무엇을 어디에 심을지** 정하는 유일한 곳입니다.
