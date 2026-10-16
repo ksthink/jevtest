@@ -163,7 +163,11 @@ for (const r of rows) {
 const allGtCode = new Set(key.expected_findings.map((f) => `${f.gt}|${f.code}`));
 // 요강 5개 분야와 요강 밖 유형을 갈라 센다.
 const scopeOf = new Map();
-for (const f of key.expected_findings) scopeOf.set(`${f.gt}|${f.code}`, f.scope || 'spec');
+const domainOf = new Map();
+for (const f of key.expected_findings) {
+  scopeOf.set(`${f.gt}|${f.code}`, f.scope || 'spec');
+  if (f.domain) domainOf.set(`${f.gt}|${f.code}`, f.domain);
+}
 const fn = [...allGtCode].filter((k) => !tpGt.has(k)).sort();
 
 const tp = tpGt.size;
@@ -173,6 +177,7 @@ const f1 = prec + rec ? (2 * prec * rec) / (prec + rec) : 0;
 
 const pct = (x) => (x * 100).toFixed(1) + '%';
 console.log(`대상 사이트 : ${site}`);
+if (key.profile) console.log(`분야 분포   : ${key.profile.label} (${key.profile.name})`);
 console.log(`정답 수     : ${allGtCode.size} (함정 ${trapGts.size}건)`);
 console.log(`보고된 검출 : ${rows.length} (result.json ${main.length}, result_extra.json ${extra.length})`);
 console.log('');
@@ -204,6 +209,23 @@ for (const k of allGtCode) {
 console.log('\n유형별 재현율');
 for (const [code, s] of [...perCode].sort()) {
   console.log(`  ${code.padEnd(18)} ${s.tp}/${s.total}  ${pct(s.total ? s.tp / s.total : 0)}`);
+}
+
+// 분야별 재현율. 어느 분야 어휘가 비어 있는지 바로 보인다.
+const perDom = new Map();
+for (const k of allGtCode) {
+  const d = domainOf.get(k);
+  if (!d) continue;
+  const s2 = perDom.get(d) || { total: 0, tp: 0 };
+  s2.total++;
+  if (tpGt.has(k)) s2.tp++;
+  perDom.set(d, s2);
+}
+if (perDom.size) {
+  console.log('\n분야별 재현율');
+  for (const [d, s2] of [...perDom].sort((a, b) => b[1].total - a[1].total)) {
+    console.log(`  ${d.padEnd(8)} ${String(s2.tp).padStart(3)}/${String(s2.total).padEnd(3)} ${pct(s2.tp / s2.total)}`);
+  }
 }
 
 if (fn.length) {

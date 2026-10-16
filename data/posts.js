@@ -8,6 +8,7 @@ const {
   DOMAINS, DOMAIN_SCOPE, AD_COPY, AD_COPY_LATIN, NORMAL_BODY, NORMAL_TITLES, TRAP_LINES,
   COMMENT_AUTHORS, NORMAL_COMMENTS, OFFICIAL_REPLIES, TRAP_COMMENTS,
 } = require('./copy');
+const { PROFILE } = require('./profile');
 const { circled, cyrillic, entities, fullwidth, jamo, jamoLatin, leet, mathBold, nfd, spaced, zeroWidth } = require('../lib/disguise');
 
 const MAIN_CODES = ['HOMOGLYPH', 'JAMO', 'TRANSPARENT', 'OFFSCREEN'];
@@ -61,15 +62,9 @@ const OFFSCREEN_V = [
 /**
  * 분야 회전 순서. 검출마다 한 칸씩 돌린다.
  *
- * 요강 5개 분야가 15칸, 요강 밖 유형이 3칸이라 약 83% : 17%가 된다. 요강 밖 유형도
- * 실제로 올라오므로 넣어 두되, 적격평가 점수를 재는 숫자가 거기에 휘둘리지 않게 한다.
+ * 어떤 분포를 쓸지는 `data/profile.js`가 환경변수 `BOARD_PROFILE`로 고른다.
  */
-const DOMAIN_CYCLE = [
-  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
-  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
-  'GAMBLE', 'ADULT', 'LOAN', 'DRUG', 'TRADE',
-  'INVEST', 'JOB', 'HACK',
-];
+const DOMAIN_CYCLE = PROFILE.cycle;
 
 /**
  * 기법·변형을 모두 훑는 조합표(26가지).
@@ -438,6 +433,7 @@ function bodyInjections(post) {
 }
 
 module.exports = {
+  PROFILE,
   MAIN_CODES, EXTRA_CODES, POSTS_PER_PAGE, TOTAL_POSTS, TOTAL_PAGES,
   POSTS, POST_BY_ID, postsOnPage, clampPage, iframeInjections, bodyInjections,
   commentInjections,
