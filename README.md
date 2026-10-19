@@ -283,7 +283,12 @@ BOARD_PROFILE=adult PORT=3001 node server.js   # adult
 
 ```html
 <p data-gt="G025" style="opacity:0;font-size:0">카지노 신규가입 첫충 30% 머니 지급</p>
+<p><a href="http://ad-g002.example.test/" rel="nofollow" data-gt="G002">АV ТUВЕ 최신 주소 안내</a></p>
 ```
+
+표식은 항상 **근거 문구를 직접 담은 가장 안쪽 요소**에 붙고, 숨김 스타일도 그 요소에 걸립니다.
+요강 붙임4 예시(f_001~f_004)가 모두 그런 요소를 가리키기 때문입니다. 요강은 "같은 요소를 정확히
+가리키면 정답"이므로 그 요소를 감싼 바깥 요소(위의 `p`)나 그 안쪽 요소를 가리키면 오답입니다.
 
 표식 접두어는 이렇게 나눕니다.
 

@@ -162,9 +162,12 @@ function build(spec, gt) {
   const inner = useEntities ? entities(text) : esc(text);
 
   // 제목은 목록에서 이미 <a> 안에 들어가므로 링크를 또 감싸지 않는다(중첩 <a>는 잘못된 HTML이다).
-  const href = spec.where !== 'title' && (codes.includes('VISIBLE_AD') || codes.includes('HOMOGLYPH'))
-    ? `<a href="http://ad-${gt.toLowerCase()}.example.test/" rel="nofollow">${inner}</a>`
-    : inner;
+  // 링크를 씌우면 표식(data-gt)과 스타일은 글자를 직접 담은 <a>에 둔다. 요강 예시(붙임4 f_001~f_004)는
+  // 모두 근거 문구를 직접 담은 가장 안쪽 요소를 가리키고, 감싼 요소는 '같은 요소'가 아니다.
+  const linked = spec.where !== 'title' && (codes.includes('VISIBLE_AD') || codes.includes('HOMOGLYPH'));
+  const html = linked
+    ? `<${tag}><a href="http://ad-${gt.toLowerCase()}.example.test/" rel="nofollow" ${marker}${clsAttr}${attrPart}>${inner}</a></${tag}>`
+    : `<${tag} ${marker}${clsAttr}${attrPart}>${inner}</${tag}>`;
 
   return {
     gt,
@@ -175,7 +178,7 @@ function build(spec, gt) {
     scope: DOMAIN_SCOPE[spec.dom] || 'spec',
     evidence: text,
     note: notes.join(' / '),
-    html: `<${tag} ${marker}${clsAttr}${attrPart}>${href}</${tag}>`,
+    html,
   };
 }
 
