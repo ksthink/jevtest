@@ -58,6 +58,7 @@ detect.exe https://<배포주소>/board/list?page=1
 | `/iframe/ad?id=<글번호>` | 글 안의 iframe 문서 |
 | `/api/comments?id=<글번호>` | 「댓글 더보기」를 눌렀을 때 받아 가는 댓글 조각 |
 | `/answer-key` | 정답표 화면 |
+| `/score` | **결과 채점.** `result.json`·`result_extra.json`을 올리면 요강 기준으로 채점한다 |
 | `/api/answer-key` | 정답표 JSON (`?format=flat`, `?origin=https://...`) |
 | `/robots.txt` | 전부 허용(`--respect-robots`로 돌려도 막히지 않게) |
 
@@ -323,8 +324,16 @@ BOARD_PROFILE=adult PORT=3001 node server.js   # adult
 ```
 
 - `bucket: "main"`은 `result.json`에, `"extra"`는 `result_extra.json`에 있어야 합니다.
-- 같은 삽입이 여러 주소에 보이면(제목은 목록 3곳 + 상세 2곳) 주소마다 한 줄씩 들어갑니다.
-  채점은 `gt` 단위로 하면 됩니다.
+- 같은 삽입이 여러 주소에 보이면 주소마다 한 줄씩 들어갑니다. 요강은 **쿼리 값이 다르면 다른 페이지**로
+  보므로(p.12), 사이트가 실제로 거는 링크 모양을 전부 적습니다.
+
+  | 어디서 들어오나 | 주소 |
+  |---|---|
+  | 첫화면·포토갤러리 | `/board/view?id=X` |
+  | 열린게시판 목록 | `/board/view?id=X&page=P` |
+  | 주소를 바로 열 때 | `/jsboard/view.do?nttId=X` |
+  | 자유게시판 `fn_view()` | `/jsboard/view.do?nttId=X&bbsId=B02&pageIndex=P` |
+  | 제목이 보이는 목록 | `/board/list?page=P`, `/gallery?page=P`, `/jsboard/list.do?bbsId=B02&pageIndex=P`, 쪽 넘김 폼 전송 주소(`…&postIdx=0&recordCountPerPage=10`), 첫화면 `/`(앞 5건) |
 - 사이트를 다른 주소로 띄워 검사했다면 `?origin=https://...`로 주소를 맞출 수 있습니다.
 - `via: "comment-more"`인 건은 **처음 HTML에 없습니다.** 「댓글 더보기」를 누르지 않는 도구는
   이 2건을 놓치는 것이 정상입니다(놓쳐도 다른 71건에는 영향이 없습니다).
@@ -332,6 +341,30 @@ BOARD_PROFILE=adult PORT=3001 node server.js   # adult
 ---
 
 ## 5. 채점
+
+### 화면에서 — 요강 기준 (`/score`)
+
+메뉴의 **결과 채점**에서 `result.json`·`result_extra.json`을 올리면 모집요강 붙임2·붙임4의 규칙 그대로 채점합니다.
+파일은 브라우저 안에서만 읽고 서버로 보내지 않습니다.
+
+| 보는 것 | 규칙 |
+|---|---|
+| 파일 | UTF-8(BOM 없음) JSON. 파싱이 안 되면 그 회차 0점. 최상위 키는 `meta`·`findings` 두 개, `findings`는 단일 배열 |
+| meta | `topic`·`entry_url`·`started_at`·`finished_at`(ISO 8601)·`elapsed_sec`(number) 필수 |
+| 항목 | `id`(파일 안 고유)·`url`(전체 주소)·`is_violation`(boolean)·`location`·`evidence_text`·`technique` 필수. `technique`은 4종 중 하나(추가 탐지는 `"ETC"`), 배열·나열 불가. 어긴 항목은 채점에서 빼고 정확도에서는 오답으로 센다 |
+| 정답 | `url`·`location`·`technique` 세 필드가 모두 정답셋과 같아야 한다. 세 필드가 같은 항목은 1건으로 합친다 |
+| url | 끝의 `/`, http/https, `#` 이하만 무시. 쿼리 값이 다르면 다른 페이지(순서는 무관) |
+| location | 페이지를 받아 **DOM에 직접 대 본다.** 정확히 1개 요소를 가리켜야 하고 둘 이상이면 오답. 정답 요소의 안쪽·바깥 요소도 오답. iframe 안은 `iframe[src="절대주소"] >>> 선택자`. 「댓글 더보기」는 펼친 상태로 본다 |
+| 시간 | `meta.elapsed_sec`가 1,800초를 넘으면 검출 시간 0점 |
+
+정답셋은 `meta.entry_url`의 주소로 만든 정답표이므로, 같은 사이트를 다른 주소로 띄워 검사한 결과도 채점됩니다.
+오답마다 까닭(여러 요소를 가리킴, 기법이 다름, 정답셋에 없는 주소, 함정 요소 등)을 같이 보여 줍니다.
+채점 코드는 [`lib/score-core.js`](lib/score-core.js)에 있습니다.
+
+### 명령줄에서 — 빠른 대조 (`tools/score.mjs`)
+
+아래 도구는 DOM 없이 돌아가므로 location을 실제 요소에 대 보지 않고 `evidence_text`로도 맞춥니다.
+요강보다 너그럽습니다. 요강 기준 점수는 `/score` 화면에서 봅니다.
 
 탐지 도구가 만든 `result.json` / `result_extra.json`을 정답표와 맞춰 봅니다.
 
